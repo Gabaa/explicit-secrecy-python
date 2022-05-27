@@ -1,3 +1,3 @@
-# Unsafe
-h = 7
-print(h)
+# Unsafe, h is leaked
+high = 7
+print(high)
