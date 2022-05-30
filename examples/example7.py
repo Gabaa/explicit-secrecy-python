@@ -1,6 +1,6 @@
 import expsec
 
-# Unsafe
+# Unsafe: `a` may be secret
 a = 10
 if a < 0:
     expsec.declassify(a)

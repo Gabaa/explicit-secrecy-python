@@ -1,6 +1,6 @@
 import expsec
 
-# Unsafe
+# Unsafe: This declassifies `b`, but not `a`
 a = 10
 b = a
 expsec.declassify(b)

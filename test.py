@@ -5,13 +5,19 @@ import analysis
 
 
 def compare_output_to_expected(output: str, expected_file: Path, i: int):
+    if not expected_file.exists:
+        print(f"File {expected_file} does not exist")
+        return
+
     with open(expected_file, 'r') as f:
         expected = f.read()
 
     if output == expected:
-        print(f'✅ examples/example{i}.py')
+        print(f'🟢 examples/example{i}.py')
     else:
-        print(f'❌ examples/example{i}.py')
+        print(f'🔴 examples/example{i}.py')
+        print(f'Expected:\n{expected}')
+        print(f'Actual:\n{output}')
 
 
 def run_all_examples():
@@ -23,9 +29,15 @@ def run_all_examples():
 
         expected_output_path = Path('expected-outputs', f'example{i}.txt')
 
-        output = ''
-        for s in analysis.run_analysis(str(example_path), False):
-            output += s + '\n'
+        try:
+            analysis_output = analysis.run_analysis(str(example_path), False)
+            output = ''
+            for s in analysis_output:
+                output += s + '\n'
+        except:
+            print(f"🟡 Could not run analysis for {example_path}")
+            i += 1
+            continue
 
         compare_output_to_expected(output, expected_output_path, i)
 

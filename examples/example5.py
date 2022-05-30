@@ -1,6 +1,6 @@
 import expsec
 
-# Should be safe (implicit flow)
+# Safe: implicit flow
 h = 5
 i = expsec.Public(0)
 while i < h:
