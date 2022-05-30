@@ -1,9 +1,9 @@
 import ast
 import enum
 import sys
-from ast import (AST, Assign, Attribute, BinOp, Call, Constant, Expr, If, Import,
-                 Name, Pass, While, alias)
-from regex import P
+from ast import (AST, Assign, Attribute, BinOp, Call, Constant, Expr, If,
+                 Import, Name, Pass, While, alias)
+from typing import Generator, Optional
 
 from scalpel.cfg import CFG, Block, CFGBuilder
 
@@ -19,9 +19,22 @@ class TaintStatus(enum.Enum):
         return cls.UNTAINTED
 
 
-State = dict[str, TaintStatus]
+class Warning:
+    def __init__(self, statement, expr):
+        self.statement = statement
+        self.expr = expr
 
-SOURCE = None
+    def format(self, source) -> str:
+        line_no = f"Ln {self.expr.lineno}, Col {self.expr.col_offset}"
+
+        return (
+            f"\t{line_no}: {ast.get_source_segment(source, self.statement)}\n" +
+            "\t" + ' ' * (len(line_no) + 2 + self.expr.col_offset - self.statement.col_offset) +
+            '^' * (self.expr.end_col_offset - self.expr.col_offset)
+        )
+
+
+State = dict[str, TaintStatus]
 
 
 def evaluate_taint_status(expr: Expr, state: State) -> TaintStatus:
@@ -38,26 +51,19 @@ def evaluate_taint_status(expr: Expr, state: State) -> TaintStatus:
             raise NotImplementedError("Evaluator", ast.dump(expr))
 
 
-def display_warning(statement, expr):
-    line_no = f"Ln {expr.lineno}, Col {expr.col_offset}"
-    print(f"\t{line_no}: {ast.get_source_segment(SOURCE, statement)}")
-    print("\t" + ' ' * (len(line_no) + 2 + expr.col_offset - statement.col_offset) +
-          '^' * (expr.end_col_offset - expr.col_offset))
-
-
-def state_transformer(statement: AST, state: State, verbose: bool = True) -> State:
+def state_transformer(statement: AST, state: State) -> tuple[State, Optional[Warning]]:
     state = state.copy()
+    warning = None
 
     match statement:
         case Expr(value=value):
-            state = state_transformer(value, state, verbose=verbose)
+            state, warning = state_transformer(value, state)
         case Assign(targets=[Name(id=name)], value=value):
             state[name] = evaluate_taint_status(value, state)
         case Call(func=Name(id='print'), args=[expr]):
             match evaluate_taint_status(expr, state):
                 case TaintStatus.TAINTED:
-                    if verbose:
-                        display_warning(statement, expr)
+                    warning = Warning(statement, expr)
                 case TaintStatus.UNTAINTED:
                     pass
         case Call(func=Attribute(value=Name(id='expsec'), attr='declassify'), args=[Name(id=name)]):
@@ -69,7 +75,7 @@ def state_transformer(statement: AST, state: State, verbose: bool = True) -> Sta
         case _:
             raise NotImplementedError("State Transformer", ast.dump(statement))
 
-    return state
+    return state, warning
 
 
 def join_states(states: list[State]) -> State:
@@ -109,8 +115,7 @@ def round_robin_iteration(blocks: list[Block]):
                            for link in block.predecessors]
             new_state = join_states(pred_states)
             for statement in block.statements:
-                new_state = state_transformer(
-                    statement, new_state, verbose=False)
+                new_state, _ = state_transformer(statement, new_state)
             if state != new_state:
                 changed = True
             states[block.id] = new_state
@@ -118,22 +123,17 @@ def round_robin_iteration(blocks: list[Block]):
     return states
 
 
-def main():
-    global SOURCE
-    with open(sys.argv[1], 'r') as f:
-        SOURCE = f.read()
-
-    debug = False
-    if '--debug' in sys.argv:
-        debug = True
+def run_analysis(file_name: str, debug: bool) -> Generator[str, None, None]:
+    with open(file_name, 'r') as f:
+        source = f.read()
 
     # Show the full AST
     if debug:
-        tree = ast.parse(SOURCE)
-        print(ast.dump(tree, indent=2))
+        tree = ast.parse(source)
+        yield ast.dump(tree, indent=2)
 
     # Build the CFG
-    cfg: CFG = CFGBuilder().build_from_src("cfg", SOURCE)
+    cfg: CFG = CFGBuilder().build_from_src("cfg", source)
     if debug:
         graph = cfg.build_visual('pdf', show=False)
         graph.save('cfg.gv')
@@ -141,17 +141,30 @@ def main():
     blocks: list[Block] = cfg.get_all_blocks()
     states = round_robin_iteration(blocks)
     if debug:
-        print('All block exit states')
+        yield 'All block exit states'
         for block_id, state in states.items():
-            print(f'Block #{block_id}: {state}')
+            yield f'Block #{block_id}: {state}'
 
     # Run output iteration
-    print("Found the following tainted outputs:")
+    results = []
     for block in blocks:
         pred_states = [states[link.source.id] for link in block.predecessors]
         new_state = join_states(pred_states)
         for statement in block.statements:
-            new_state = state_transformer(statement, new_state)
+            new_state, warning = state_transformer(statement, new_state)
+            if warning != None:
+                results.append(warning.format(source))
+
+    if len(results) > 0:
+        yield f"Found the following tainted outputs in {file_name}:"
+    for result in results:
+        yield result
+
+
+def main():
+    output_generator = run_analysis(sys.argv[1], '--debug' in sys.argv)
+    for output in output_generator:
+        print(output)
 
 
 if __name__ == '__main__':
