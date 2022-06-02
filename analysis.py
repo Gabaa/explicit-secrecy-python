@@ -2,7 +2,7 @@ import ast
 import enum
 import sys
 from ast import (AST, Assign, Attribute, BinOp, Call, Constant, Expr, If,
-                 Import, Name, Pass, While, alias)
+                 Import, List, Name, Pass, While, alias)
 from typing import Generator, Optional
 
 from scalpel.cfg import CFG, Block, CFGBuilder
@@ -60,11 +60,31 @@ class State:
         self.loc_map = loc_map
         self.next_location_num = next_location_num
 
-    def lookup(self, key: Variable) -> TaintStatus:
+    def __getitem__(self, key: Variable) -> TaintStatus:
         val = self.var_map[key]
         if type(val) == State.Location:
             return self.loc_map[val]
         return val
+
+    # key og status
+    # Hvis key har ts i var_map, bliver det sat til status
+    # Hvis key har loc i var_map bliver loc i loc_map sat til status
+
+    def __setitem__(self, key: Variable, value: TaintStatus):
+        """Sets the taint status for the variable."""
+        match self.var_map[key]:
+            case TaintStatus.TAINTED | TaintStatus.UNTAINTED:
+                self.var_map[key] = value
+            case loc:
+                self.loc_map[loc] = value
+
+    def assign(self, key: Variable, value: Value):
+        """Assign a location or taint status to the variable map."""
+        self.var_map[key] = value
+
+    def new_constant(self, key: Variable, ts: TaintStatus):
+        """Create a new constant"""
+        self.var_map[key] = ts
 
     def new_location(self, key: Variable, ts: TaintStatus):
         """Create a new memory location"""
@@ -74,9 +94,6 @@ class State:
 
         self.var_map[key] = location
         self.loc_map[location] = ts
-
-    def update_location(self, key: Variable, ts: TaintStatus):
-        pass
 
     def copy(self) -> 'State':
         return State(self.var_map.copy(), self.loc_map.copy())
@@ -111,7 +128,20 @@ def evaluate_taint_status(expr: Expr, state: State) -> TaintStatus:
             raise NotImplementedError("Evaluator", ast.dump(expr))
 
 
-detvarsaalidt
+# detvarsaalidt
+# - Bolette (02/06/2022)
+
+def handle_assignment(name: str, value: AST, state: State) -> State:
+    match value:
+        case Name(id=other):
+            state.assign(name, state.var_map[other])
+        case List(elts=elts):
+            ts = TaintStatus.UNTAINTED
+            for elt in elts:
+                ts = TaintStatus.lub(ts, evaluate_taint_status(elt, state))
+            state.new_location(name, ts)
+        case _:
+            state
 
 
 def state_transformer(statement: AST, state: State) -> tuple[State, Optional[Warning]]:
@@ -121,7 +151,17 @@ def state_transformer(statement: AST, state: State) -> tuple[State, Optional[War
     match statement:
         case Expr(value=value):
             state, warning = state_transformer(value, state)
+        case Assign(targets=[Name(id=name)], value=Call(func=Attribute(value=Name(id='expsec'), attr='Public'), args=[arg])):
+            """If the argument to Public is points to a location, declassify that location and assign the location.
+            Otherwise, 
+            """
+
+        case Assign(targets=[Name(id=name)], value=Call(args=List(elts=elts))):
+            pass
+        case Assign(targets=[Name(id=name)], value=Constant()):
+            state[name] = evaluate_taint_status(value, state)
         case Assign(targets=[Name(id=name)], value=value):
+            state = handle_assignment(name, value, state)
             state[name] = evaluate_taint_status(value, state)
         case Call(func=Name(id='print'), args=[expr]):
             match evaluate_taint_status(expr, state):
