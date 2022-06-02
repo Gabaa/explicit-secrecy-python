@@ -1,0 +1,3 @@
+Found the following tainted outputs in examples/example19.py:
+	Ln 11, Col 6: print(a)
+	                    ^

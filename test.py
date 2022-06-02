@@ -1,26 +1,32 @@
 """Run each example compare the actual output to the expected output."""
 
+import traceback
 from pathlib import Path
+
 import analysis
 
 
-def compare_output_to_expected(output: str, expected_file: Path, i: int):
-    if not expected_file.exists:
-        print(f"File {expected_file} does not exist")
-        return
+def compare_output_to_expected(output: str, expected_file: Path, example_path: Path) -> int:
+    if not expected_file.exists():
+        print(f"🟡 {example_path}: File {expected_file} does not exist")
+        return False
 
     with open(expected_file, 'r') as f:
         expected = f.read()
 
     if output == expected:
-        print(f'🟢 examples/example{i}.py')
+        print(f'🟢 {example_path}')
+        return True
     else:
-        print(f'🔴 examples/example{i}.py')
+        print(f'🔴 {example_path}:\n')
         print(f'Expected:\n{expected}')
         print(f'Actual:\n{output}')
+        return False
 
 
 def run_all_examples():
+    accepted = 0
+
     i = 1
     while True:
         example_path = Path('examples', f'example{i}.py')
@@ -34,11 +40,18 @@ def run_all_examples():
             output = ''
             for s in analysis_output:
                 output += s + '\n'
-            compare_output_to_expected(output, expected_output_path, i)
-        except Exception as e:
-            print(f"🟡 Could not run analysis for {example_path}:\n\n{e}\n")
+            result = compare_output_to_expected(
+                output, expected_output_path, example_path)
+            if result:
+                accepted += 1
+        except:
+            print(f"🟡 {example_path}: Could not run analysis:\n")
+            traceback.print_exc()
+            print()
 
         i += 1
+
+    print(f'Accepted: [{accepted}/{i - 1}]')
 
 
 if __name__ == '__main__':

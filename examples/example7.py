@@ -1,12 +1,13 @@
 """
 Unsafe: `a` may be secret
 
-expsec_public: 
+expsec_public: b
 """
 
 a = 10
+b = 20
 if a < 0:
-    expsec.declassify(a)
+    a = b
 else:
     pass
 print(a)

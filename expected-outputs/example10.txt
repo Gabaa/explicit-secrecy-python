@@ -1,3 +1,0 @@
-Found the following tainted outputs in examples/example10.py:
-	Ln 7, Col 6: print(a)
-	                   ^

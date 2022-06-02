@@ -1,10 +1,5 @@
 """
-Unsafe: This declassifies `b`, but not `a`
+Safe: does nothing
 
-expsec_public:
+expsec_public: a, b, c
 """
-
-a = 10
-b = a
-expsec.declassify(b)
-print(a)

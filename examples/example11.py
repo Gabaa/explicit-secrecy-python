@@ -1,10 +1,9 @@
 """
-Safe: This declassifies both `a` and `b`
+Safe
 
-expsec_public:
+expsec_public: a
 """
 
 a = [1, 2, 3]
 b = a
-expsec.declassify(b)
 print(a)
