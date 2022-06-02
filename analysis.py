@@ -73,6 +73,8 @@ class State:
             case TaintStatus.TAINTED if variable in self.public_primitive_vars:
                 self.public_primitive_vars.remove(variable)
             case TaintStatus.UNTAINTED:
+                if variable in self.heap_vars:
+                    self.heap_vars.pop(variable)
                 self.public_primitive_vars.add(variable)
             case loc if type(loc) == str:
                 if variable in self.public_primitive_vars:

@@ -1,0 +1,5 @@
+Found the following tainted outputs in examples/example23.py:
+	Ln 13, Col 6: print(c1)
+	                    ^^
+	Ln 21, Col 6: print(c2)
+	                    ^^
