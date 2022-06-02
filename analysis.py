@@ -18,6 +18,69 @@ class TaintStatus(enum.Enum):
             return cls.TAINTED
         return cls.UNTAINTED
 
+# a = []
+# b = a
+# decl(b)
+
+# lst = []
+#
+# {
+#     lst -> loc1
+# }
+#
+# Var -> TS | Location
+#   { a => loc1, b -> loc1 }
+#
+# Location -> TS
+#   { loc1 -> [a, b] }
+
+# TS_MAP = {
+#     a -> TS
+#     b -> TS
+#     loc1 -> TS
+#     }
+
+# Val : Z | Bool | Loc | {null}
+# Mem : Var -> Val
+# Heap : Loc x Fld -> Val
+
+
+class State:
+    Variable = str
+    Constant = TaintStatus
+    Location = str
+    Value = Constant | Location
+
+    var_map: dict[Variable, TaintStatus | Location]
+    loc_map: dict[Location, TaintStatus]
+    next_location_num: int
+
+    def __init__(self, var_map, loc_map, next_location_num=0):
+        self.var_map = var_map
+        self.loc_map = loc_map
+        self.next_location_num = next_location_num
+
+    def lookup(self, key: Variable) -> TaintStatus:
+        val = self.var_map[key]
+        if type(val) == State.Location:
+            return self.loc_map[val]
+        return val
+
+    def new_location(self, key: Variable, ts: TaintStatus):
+        """Create a new memory location"""
+
+        location = f"loc{self.next_location_num}"
+        self.next_location_num += 1
+
+        self.var_map[key] = location
+        self.loc_map[location] = ts
+
+    def update_location(self, key: Variable, ts: TaintStatus):
+        pass
+
+    def copy(self) -> 'State':
+        return State(self.var_map.copy(), self.loc_map.copy())
+
 
 class Warning:
     def __init__(self, statement, expr):
@@ -34,9 +97,6 @@ class Warning:
         )
 
 
-State = dict[str, TaintStatus]
-
-
 def evaluate_taint_status(expr: Expr, state: State) -> TaintStatus:
     match expr:
         case Constant():
@@ -49,6 +109,9 @@ def evaluate_taint_status(expr: Expr, state: State) -> TaintStatus:
             return TaintStatus.lub(evaluate_taint_status(left, state), evaluate_taint_status(right, state))
         case _:
             raise NotImplementedError("Evaluator", ast.dump(expr))
+
+
+detvarsaalidt
 
 
 def state_transformer(statement: AST, state: State) -> tuple[State, Optional[Warning]]:
