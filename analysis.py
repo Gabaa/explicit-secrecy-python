@@ -2,7 +2,7 @@ import ast
 import enum
 import sys
 from ast import (AST, Assign, Attribute, BinOp, Call, Constant, Expr, If,
-                 Import, List, Name, Pass, While, alias)
+                 Import, List, Module, Name, Pass, Subscript, While, alias)
 from typing import Generator, Optional
 
 from scalpel.cfg import CFG, Block, CFGBuilder
@@ -17,86 +17,6 @@ class TaintStatus(enum.Enum):
         if cls.TAINTED in [left, right]:
             return cls.TAINTED
         return cls.UNTAINTED
-
-# a = []
-# b = a
-# decl(b)
-
-# lst = []
-#
-# {
-#     lst -> loc1
-# }
-#
-# Var -> TS | Location
-#   { a => loc1, b -> loc1 }
-#
-# Location -> TS
-#   { loc1 -> [a, b] }
-
-# TS_MAP = {
-#     a -> TS
-#     b -> TS
-#     loc1 -> TS
-#     }
-
-# Val : Z | Bool | Loc | {null}
-# Mem : Var -> Val
-# Heap : Loc x Fld -> Val
-
-
-class State:
-    Variable = str
-    Constant = TaintStatus
-    Location = str
-    Value = Constant | Location
-
-    var_map: dict[Variable, TaintStatus | Location]
-    loc_map: dict[Location, TaintStatus]
-    next_location_num: int
-
-    def __init__(self, var_map, loc_map, next_location_num=0):
-        self.var_map = var_map
-        self.loc_map = loc_map
-        self.next_location_num = next_location_num
-
-    def __getitem__(self, key: Variable) -> TaintStatus:
-        val = self.var_map[key]
-        if type(val) == State.Location:
-            return self.loc_map[val]
-        return val
-
-    # key og status
-    # Hvis key har ts i var_map, bliver det sat til status
-    # Hvis key har loc i var_map bliver loc i loc_map sat til status
-
-    def __setitem__(self, key: Variable, value: TaintStatus):
-        """Sets the taint status for the variable."""
-        match self.var_map[key]:
-            case TaintStatus.TAINTED | TaintStatus.UNTAINTED:
-                self.var_map[key] = value
-            case loc:
-                self.loc_map[loc] = value
-
-    def assign(self, key: Variable, value: Value):
-        """Assign a location or taint status to the variable map."""
-        self.var_map[key] = value
-
-    def new_constant(self, key: Variable, ts: TaintStatus):
-        """Create a new constant"""
-        self.var_map[key] = ts
-
-    def new_location(self, key: Variable, ts: TaintStatus):
-        """Create a new memory location"""
-
-        location = f"loc{self.next_location_num}"
-        self.next_location_num += 1
-
-        self.var_map[key] = location
-        self.loc_map[location] = ts
-
-    def copy(self) -> 'State':
-        return State(self.var_map.copy(), self.loc_map.copy())
 
 
 class Warning:
@@ -114,16 +34,51 @@ class Warning:
         )
 
 
-def evaluate_taint_status(expr: Expr, state: State) -> TaintStatus:
+class State:
+    public: set[str]
+
+    def __init__(self, public: set[str]):
+        self.public = public
+
+    def __str__(self) -> str:
+        return f"State(public={self.public})"
+
+    def __eq__(self, other: 'State') -> bool:
+        return self.public == other.public
+
+    def get_taint_status(self, variable: str) -> TaintStatus:
+        if variable in self.public:
+            return TaintStatus.UNTAINTED
+        return TaintStatus.TAINTED
+
+    def set_taint_status(self, variable: str, ts: TaintStatus):
+        match ts:
+            case TaintStatus.TAINTED if variable in self.public:
+                self.public.remove(variable)
+            case TaintStatus.UNTAINTED:
+                self.public.add(variable)
+
+    def copy(self):
+        return State(self.public.copy())
+
+
+def evaluate_taint_status(expr: Expr, state: State) -> TaintStatus | None:
+    """Evaluate the expression and return the taint status (or none, if the
+    expression has no specific taint status)."""
+
     match expr:
         case Constant():
-            return TaintStatus.TAINTED
+            return None
         case Name(id=name):
-            return state[name]
-        case Call(func=Attribute(value=Name(id='expsec'), attr='Public')):
-            return TaintStatus.UNTAINTED
+            return state.get_taint_status(name)
         case BinOp(left=left, right=right):
             return TaintStatus.lub(evaluate_taint_status(left, state), evaluate_taint_status(right, state))
+        case List(elts=elts):
+            for elt in elts:
+                ts = evaluate_taint_status(elt, state)
+                if ts == TaintStatus.TAINTED:
+                    return TaintStatus.TAINTED
+            return None  # elements are all untainted or neutral
         case _:
             raise NotImplementedError("Evaluator", ast.dump(expr))
 
@@ -131,48 +86,27 @@ def evaluate_taint_status(expr: Expr, state: State) -> TaintStatus:
 # detvarsaalidt
 # - Bolette (02/06/2022)
 
-def handle_assignment(name: str, value: AST, state: State) -> State:
-    match value:
-        case Name(id=other):
-            state.assign(name, state.var_map[other])
-        case List(elts=elts):
-            ts = TaintStatus.UNTAINTED
-            for elt in elts:
-                ts = TaintStatus.lub(ts, evaluate_taint_status(elt, state))
-            state.new_location(name, ts)
-        case _:
-            state
-
-
 def state_transformer(statement: AST, state: State) -> tuple[State, Optional[Warning]]:
     state = state.copy()
     warning = None
 
     match statement:
+        case Expr(value=Constant(value=value)) if type(value) is str:
+            pass  # this is just a docstring
         case Expr(value=value):
             state, warning = state_transformer(value, state)
-        case Assign(targets=[Name(id=name)], value=Call(func=Attribute(value=Name(id='expsec'), attr='Public'), args=[arg])):
-            """If the argument to Public is points to a location, declassify that location and assign the location.
-            Otherwise, 
-            """
-
-        case Assign(targets=[Name(id=name)], value=Call(args=List(elts=elts))):
-            pass
-        case Assign(targets=[Name(id=name)], value=Constant()):
-            state[name] = evaluate_taint_status(value, state)
         case Assign(targets=[Name(id=name)], value=value):
-            state = handle_assignment(name, value, state)
-            state[name] = evaluate_taint_status(value, state)
+            ts = evaluate_taint_status(value, state)
+            state.set_taint_status(name, ts)
+        case Assign(targets=[Subscript(value=Name(id=name), slice=Constant(value=index))], value=value):
+            ts = evaluate_taint_status(value, state)
+            state.set_taint_status(name, ts)
         case Call(func=Name(id='print'), args=[expr]):
             match evaluate_taint_status(expr, state):
                 case TaintStatus.TAINTED:
                     warning = Warning(statement, expr)
-                case TaintStatus.UNTAINTED:
+                case TaintStatus.UNTAINTED | None:
                     pass
-        case Call(func=Attribute(value=Name(id='expsec'), attr='declassify'), args=[Name(id=name)]):
-            state[name] = TaintStatus.UNTAINTED
-        case Import(names=[alias(name='expsec')]):
-            pass
         case If() | While() | Pass():
             pass
         case _:
@@ -182,18 +116,15 @@ def state_transformer(statement: AST, state: State) -> tuple[State, Optional[War
 
 
 def join_states(states: list[State]) -> State:
-    new_state = {}
+    new_state = states[0].copy()
 
-    for state in states:
-        for k, v in state.items():
-            status = v if k not in new_state else TaintStatus.lub(
-                new_state[k], v)
-            new_state[k] = status
+    for state in states[1:]:
+        new_state.public.intersection_update(state.public)
 
     return new_state
 
 
-def round_robin_iteration(blocks: list[Block]):
+def round_robin_iteration(public_variables: set[str], blocks: list[Block]):
     """
     procedure RoundRobin(f1, . . . , fn)
         (x1, . . . , xn) := (⊥, . . . , ⊥)
@@ -206,24 +137,40 @@ def round_robin_iteration(blocks: list[Block]):
     end procedure
     """
 
-    states = {block.id: {} for block in blocks}
+    states = {block.id: State(public_variables.copy()) for block in blocks}
     changed = True
 
     while changed:
         changed = False
 
         for block in blocks:
-            state = states[block.id]
             pred_states = [states[link.source.id]
                            for link in block.predecessors]
-            new_state = join_states(pred_states)
+
+            if len(pred_states) == 0:
+                new_state = State(public_variables)
+            else:
+                new_state = join_states(pred_states)
+
             for statement in block.statements:
                 new_state, _ = state_transformer(statement, new_state)
-            if state != new_state:
+            if states[block.id] != new_state:
                 changed = True
             states[block.id] = new_state
 
     return states
+
+
+def get_public_variables_from_docstring(tree: Module) -> set[str]:
+    ds = ast.get_docstring(tree)
+
+    if ds is None:
+        return set()
+
+    for line in ds.split('\n'):
+        if line.startswith('expsec_public:'):
+            vars = line[14:].strip().split(', ')
+            return set(vars)
 
 
 def run_analysis(file_name: str, debug: bool) -> Generator[str, None, None]:
@@ -231,9 +178,11 @@ def run_analysis(file_name: str, debug: bool) -> Generator[str, None, None]:
         source = f.read()
 
     # Show the full AST
+    tree = ast.parse(source)
     if debug:
-        tree = ast.parse(source)
         yield ast.dump(tree, indent=2)
+
+    public_variables = get_public_variables_from_docstring(tree)
 
     # Build the CFG
     cfg: CFG = CFGBuilder().build_from_src("cfg", source)
@@ -242,7 +191,7 @@ def run_analysis(file_name: str, debug: bool) -> Generator[str, None, None]:
         graph.save('cfg.gv')
 
     blocks: list[Block] = cfg.get_all_blocks()
-    states = round_robin_iteration(blocks)
+    states = round_robin_iteration(public_variables, blocks)
     if debug:
         yield 'All block exit states'
         for block_id, state in states.items():
@@ -252,7 +201,12 @@ def run_analysis(file_name: str, debug: bool) -> Generator[str, None, None]:
     results = []
     for block in blocks:
         pred_states = [states[link.source.id] for link in block.predecessors]
-        new_state = join_states(pred_states)
+
+        if len(pred_states) == 0:
+            new_state = State(public_variables)
+        else:
+            new_state = join_states(pred_states)
+
         for statement in block.statements:
             new_state, warning = state_transformer(statement, new_state)
             if warning != None:

@@ -1,7 +1,10 @@
-import expsec
+"""
+Unsafe: h is leaked
 
-# Unsafe: h is leaked
+expsec_public: l
+"""
+
 h = 4
-l = expsec.Public(6)
+l = 6
 l = h
 print(l)

@@ -1,7 +1,10 @@
-import expsec
+"""
+Safe: updated with public value
 
-a = expsec.Public(10)
+expsec_public: a, lst
+"""
+
+a = 10
 lst = [0]
-expsec.declassify(lst)
 lst[0] = a
 print(lst)

@@ -1,9 +1,12 @@
-import expsec
+"""
+Safe: implicit flow
 
-# Safe: implicit flow
+expsec_public: i
+"""
+
 h = 5
-i = expsec.Public(0)
+i = 0
 while i < h:
-    i = i + expsec.Public(1)
+    i = i + 1
 
 print(i)

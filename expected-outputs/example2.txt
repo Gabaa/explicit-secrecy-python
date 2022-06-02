@@ -1,3 +1,3 @@
 Found the following tainted outputs in examples/example2.py:
-	Ln 3, Col 6: print(high)
+	Ln 8, Col 6: print(high)
 	                   ^^^^

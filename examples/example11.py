@@ -1,6 +1,10 @@
-import expsec
+"""
+Safe: This declassifies both `a` and `b`
 
-# Safe: This declassifies both `a` and `b`
+expsec_public:
+"""
+
 a = [1, 2, 3]
-b = expsec.Public(a)
+b = a
+expsec.declassify(b)
 print(a)

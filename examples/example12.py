@@ -1,7 +1,10 @@
-import expsec
+"""
+Safe: list is constructed from only public values
 
-# Safe: This declassifies both `a` and `b`
-a = [1, 2, 3]
-b = a
-expsec.declassify(b)
-print(a)
+expsec_public: a, b, lst
+"""
+
+a = 10
+b = 12
+lst = [a, b]
+print(lst)

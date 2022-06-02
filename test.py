@@ -34,12 +34,9 @@ def run_all_examples():
             output = ''
             for s in analysis_output:
                 output += s + '\n'
-        except:
-            print(f"🟡 Could not run analysis for {example_path}")
-            i += 1
-            continue
-
-        compare_output_to_expected(output, expected_output_path, i)
+            compare_output_to_expected(output, expected_output_path, i)
+        except Exception as e:
+            print(f"🟡 Could not run analysis for {example_path}:\n\n{e}\n")
 
         i += 1
 

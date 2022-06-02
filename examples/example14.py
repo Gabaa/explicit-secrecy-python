@@ -1,7 +1,10 @@
-import expsec
+"""
+Unsafe: assigning secret value into public list turns list secret
 
-# Unsafe: assigning secret value into public list turns list secret
+expsec_public: lst
+"""
+
+a = 10
 lst = [0]
-expsec.declassify(lst)
-lst[expsec.Public(0)] = 10  # Assign secret into public
-print(lst)                  # ERROR
+lst[0] = a  # Assign secret into public
+print(lst)  # ERROR

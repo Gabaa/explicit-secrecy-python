@@ -1,7 +1,10 @@
-import expsec
+"""
+Safe: l overwrites h
 
-# Safe: l overwrites h
+expsec_public: l
+"""
+
 h = 4
-l = expsec.Public(6)
+l = 6
 h = l
 print(h)

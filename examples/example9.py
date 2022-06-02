@@ -1,6 +1,9 @@
-import expsec
+"""
+Unsafe: `a` flows to `b`
 
-# Unsafe: This declassifies `b`, but not `a`
+expsec_public: b
+"""
+
 a = 10
-b = expsec.Public(a)
-print(a)
+b = a
+print(b)
